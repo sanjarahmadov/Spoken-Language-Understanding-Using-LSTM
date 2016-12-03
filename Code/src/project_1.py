@@ -17,8 +17,8 @@ import timeit
 import theano
 from theano import tensor as T
 
-from hw4_utils import load_data, contextwin, shuffle, conlleval, check_dir
-from hw4_nn import RNNSLU
+from utils import load_data, contextwin, shuffle, conlleval, check_dir
+from nn_helpers import RNNSLU
 
 # Otherwise the deepcopy fails
 import sys
@@ -247,10 +247,15 @@ def test_rnnslu(**kwargs):
     nclasses = len(dic['labels2idx'])
     nsentences = len(train_lex)
 
-    groundtruth_valid = [map(lambda x: idx2label[x], y) for y in valid_y]
-    words_valid = [map(lambda x: idx2word[x], w) for w in valid_lex]
-    groundtruth_test = [map(lambda x: idx2label[x], y) for y in test_y]
-    words_test = [map(lambda x: idx2word[x], w) for w in test_lex]
+    #groundtruth_valid = [map(lambda x: idx2label[x], y) for y in valid_y]
+    #words_valid = [map(lambda x: idx2word[x], w) for w in valid_lex]
+    #groundtruth_test = [map(lambda x: idx2label[x], y) for y in test_y]
+    #words_test = [map(lambda x: idx2word[x], w) for w in test_lex]
+    
+    groundtruth_valid = [[idx2label[x] for x in y] for y in valid_y]
+    words_valid = [[idx2word[x] for x in w] for w in valid_lex]
+    groundtruth_test = [[idx2label[x] for x in y] for y in test_y]
+    words_test = [[idx2word[x] for x in w] for w in test_lex]
 
     # instanciate the model
     numpy.random.seed(param['seed'])
@@ -286,15 +291,24 @@ def test_rnnslu(**kwargs):
             sys.stdout.flush()
 
         # evaluation // back into the real world : idx -> words
-        predictions_test = [map(lambda x: idx2label[x],
-                            rnn.classify(numpy.asarray(
-                            contextwin(x, param['win'])).astype('int32')))
-                            for x in test_lex]
-        predictions_valid = [map(lambda x: idx2label[x],
-                             rnn.classify(numpy.asarray(
-                             contextwin(x, param['win'])).astype('int32')))
-                             for x in valid_lex]
+        #predictions_test = [map(lambda x: idx2label[x],
+        #                    rnn.classify(numpy.asarray(
+        #                    contextwin(x, param['win'])).astype('int32')))
+        #                    for x in test_lex]
+        #predictions_valid = [map(lambda x: idx2label[x],
+        #                     rnn.classify(numpy.asarray(
+        #                     contextwin(x, param['win'])).astype('int32')))
+        #                     for x in valid_lex]
 
+        
+        predictions_test = [[idx2label[x] for x in rnn.classify(numpy.asarray(
+                    contextwin(x, param['win'])).astype('int32'))]
+                     for x in test_lex]
+
+        predictions_valid = [[idx2label[x] for x in rnn.classify(numpy.asarray(
+                    contextwin(x, param['win'])).astype('int32'))]
+                     for x in valid_lex]
+        
         # evaluation // compute the accuracy using conlleval.pl
         res_test = conlleval(predictions_test,
                              groundtruth_test,

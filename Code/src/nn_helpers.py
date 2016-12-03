@@ -23,7 +23,7 @@ import theano.tensor as T
 from theano.tensor.nnet import conv2d
 from theano.tensor.signal import downsample
 
-from hw4_utils import contextwin
+from utils import contextwin
 
 def Adam(params, grads, a=0.001, ro_1=0.9, ro_2=0.999, e=1e-8):
     

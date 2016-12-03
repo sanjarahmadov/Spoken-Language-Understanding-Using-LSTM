@@ -17,8 +17,8 @@ from theano.tensor.nnet import conv2d
 from theano.tensor.signal import downsample
 import random
 
-from hw4_utils import contextwin, shared_dataset, load_data, shuffle, conlleval, check_dir
-from hw4_nn import myMLP, train_nn, Adam
+from utils import contextwin, shared_dataset, load_data, shuffle, conlleval, check_dir
+from nn_helpers import myMLP, train_nn, Adam
 
 # Otherwise the deepcopy fails
 import sys
