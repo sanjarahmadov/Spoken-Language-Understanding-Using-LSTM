@@ -13,7 +13,7 @@ from theano.tensor.nnet import conv2d
 from theano.tensor.signal import downsample
 import random
 
-from utils import contextwin, shared_dataset, load_data, shuffle, conlleval, check_dir
+from utils import contextwin, shared_dataset, load_data, shuffle, conlleval, check_dir, count_of_words_and_sentences
 from nn_helpers import myMLP, train_nn, Adam
 
 # Otherwise the deepcopy fails
@@ -21,7 +21,8 @@ import sys
 sys.setrecursionlimit(3000)
 
 class LSTM(object):
-    def __init__(self, n_hidden, n_out, n_emb, dim_emb, cwind_size, normal=True, layer_norm = False):
+    def __init__(self, n_hidden, n_out, n_emb, dim_emb, cwind_size, normal=True, layer_norm = False, 
+                 n_hidden2 = 100, experiment = 'standard', ma = 3, simplified_type = 'no_forget'):
         """Initialize the parameters for the LSTM
 
         :type nh: int
@@ -140,25 +141,125 @@ class LSTM(object):
         if layer_norm is True:
             print("Layer norm is True. Do something!")
             
-        
-        def recurrence(x_t, h_tm1, c_tm1):
-            i_t = T.nnet.sigmoid(T.dot(x_t, self.W_xi) + T.dot(h_tm1, self.W_hi) + T.dot(c_tm1, self.W_ci) + self.bi)
-            f_t = T.nnet.sigmoid(T.dot(x_t, self.W_xf) + T.dot(h_tm1, self.W_hf) + T.dot(c_tm1, self.W_cf) + self.bf)
+        if experiment is 'standard':
+            def recurrence(x_t, h_tm1, c_tm1):
+                i_t = T.nnet.sigmoid(T.dot(x_t, self.W_xi) + T.dot(h_tm1, self.W_hi) + T.dot(c_tm1, self.W_ci) + self.bi)
+                f_t = T.nnet.sigmoid(T.dot(x_t, self.W_xf) + T.dot(h_tm1, self.W_hf) + T.dot(c_tm1, self.W_cf) + self.bf)
+
+                temp = T.tanh(T.dot(x_t, self.W_xc) + T.dot(h_tm1, self.W_hc) + self.bc)
+                c_t = f_t * c_tm1 + i_t * temp       
+
+                o_t = T.nnet.sigmoid(T.dot(x_t, self.W_xo) + T.dot(h_tm1, self.W_ho) + T.dot(c_t, self.W_co) + self.bo)
+
+                h_t = o_t * T.tanh(c_t)
+                s_t = T.nnet.softmax(T.dot(h_t, self.w) + self.b)
+
+                return [h_t, c_t, s_t]            
+
+            [h, c, s], _ = theano.scan(fn=recurrence,
+                                    sequences=x,
+                                    outputs_info=[self.h0, self.c0, None],
+                                    n_steps=x.shape[0])
+        elif experiment is 'deep':
+            self.W_xi1 = theano.shared(name='wi1',
+                                    value=0.2 * numpy.random.uniform(-1.0, 1.0,
+                                    (n_hidden, n_hidden2))
+                                    .astype(theano.config.floatX))
+            self.W_xo1 = theano.shared(name='wo1',
+                                    value=0.2 * numpy.random.uniform(-1.0, 1.0,
+                                    (n_hidden, n_hidden2))
+                                    .astype(theano.config.floatX))
+            self.W_xc1 = theano.shared(name='wc1',
+                                    value=0.2 * numpy.random.uniform(-1.0, 1.0,
+                                    (n_hidden, n_hidden2))
+                                    .astype(theano.config.floatX))
+            self.W_xf1 = theano.shared(name='wf1',
+                                    value=0.2 * numpy.random.uniform(-1.0, 1.0,
+                                    (n_hidden, n_hidden2))
+                                    .astype(theano.config.floatX))
+
+            self.W_hi1 = theano.shared(name='ui1',
+                                    value=0.2 * numpy.random.uniform(-1.0, 1.0,
+                                    (n_hidden2, n_hidden2))
+                                    .astype(theano.config.floatX))
+            self.W_ho1 = theano.shared(name='uo1',
+                                    value=0.2 * numpy.random.uniform(-1.0, 1.0,
+                                    (n_hidden2, n_hidden2))
+                                    .astype(theano.config.floatX))        
+            self.W_hc1 = theano.shared(name='uc1',
+                                    value=0.2 * numpy.random.uniform(-1.0, 1.0,
+                                    (n_hidden2, n_hidden2))
+                                    .astype(theano.config.floatX))        
+            self.W_hf1 = theano.shared(name='uf1',
+                                    value=0.2 * numpy.random.uniform(-1.0, 1.0,
+                                    (n_hidden2, n_hidden2))
+                                    .astype(theano.config.floatX))    
+            # Diagonal weights
+            self.W_ci1 = theano.shared(name='vi1',
+                                    value=numpy.diag(numpy.diag(0.2 * numpy.random.uniform(-1.0, 1.0,
+                                    (n_hidden2, n_hidden2))))
+                                    .astype(theano.config.floatX))
+            self.W_co1 = theano.shared(name='vo1',
+                                    value=numpy.diag(numpy.diag(0.2 * numpy.random.uniform(-1.0, 1.0,
+                                    (n_hidden2, n_hidden2))))
+                                    .astype(theano.config.floatX))            
+            self.W_cf1 = theano.shared(name='vf1',
+                                    value=numpy.diag(numpy.diag(0.2 * numpy.random.uniform(-1.0, 1.0,
+                                    (n_hidden2, n_hidden2))))
+                                    .astype(theano.config.floatX))
+
+            self.bi1 = theano.shared(name='bi1',
+                                    value=numpy.zeros(n_hidden2,
+                                    dtype=theano.config.floatX))
+            self.bo1 = theano.shared(name='bo1',
+                                    value=numpy.zeros(n_hidden2,
+                                    dtype=theano.config.floatX))        
+            self.bc1 = theano.shared(name='bc1',
+                                    value=numpy.zeros(n_hidden2,
+                                    dtype=theano.config.floatX))
+            self.bf1 = theano.shared(name='bf1',
+                                    value=numpy.zeros(n_hidden2,
+                                    dtype=theano.config.floatX))            
+
             
-            temp = T.tanh(T.dot(x_t, self.W_xc) + T.dot(h_tm1, self.W_hc) + self.bc)
-            c_t = f_t * c_tm1 + i_t * temp       
+            self.h1 = theano.shared(name='h1',
+                                value=numpy.zeros(n_hidden2,
+                                dtype=theano.config.floatX))
+            self.c1 = theano.shared(name='c1',
+                                value=numpy.zeros(n_hidden2,
+                                dtype=theano.config.floatX))
             
-            o_t = T.nnet.sigmoid(T.dot(x_t, self.W_xo) + T.dot(h_tm1, self.W_ho) + T.dot(c_t, self.W_co) + self.bo)
+            self.params += [self.W_xi1, self.W_xo1, self.W_xc1, self.W_xf1, self.W_hi1, self.W_ho1, self.W_hc1, self.W_hf1,
+                       self.W_ci1, self.W_co1, self.W_cf1, self.bi1, self.bo1, self.bc1, self.bf1, self.c1, self.h1]
             
-            h_t = o_t * T.tanh(c_t)
-            s_t = T.nnet.softmax(T.dot(h_t, self.w) + self.b)
             
-            return [h_t, c_t, s_t]            
-        
-        [h, c, s], _ = theano.scan(fn=recurrence,
-                                sequences=x,
-                                outputs_info=[self.h0, self.c0, None],
-                                n_steps=x.shape[0])
+            
+            def recurrence(x_t, h_tm1, c_tm1, h_tm2, c_tm2):
+                
+                i_t_1 = T.nnet.sigmoid(T.dot(x_t, self.W_xi) + T.dot(h_tm2, self.W_hi) + T.dot(c_tm2, self.W_ci) + self.bi)
+                f_t_1 = T.nnet.sigmoid(T.dot(x_t, self.W_xf) + T.dot(h_tm2, self.W_hf) + T.dot(c_tm2, self.W_cf) + self.bf)
+                temp = T.tanh(T.dot(x_t, self.W_xc) + T.dot(h_tm2, self.W_hc) + self.bc)
+                c_t_1 = f_t_1 * c_tm2 + i_t_1 * temp       
+                o_t_1 = T.nnet.sigmoid(T.dot(x_t, self.W_xo) + T.dot(h_tm2, self.W_ho) + T.dot(c_t, self.W_co) + self.bo)
+                h_t_1 = o_t_1 * T.tanh(c_t_1)                
+                h_t_1 = T.dot(h_t_1, self.W_Transform) + self.b_Transform
+                           
+                i_t = T.nnet.sigmoid(T.dot(h_t_1, self.W_xi1) + T.dot(h_tm1, self.W_hi1) + T.dot(c_tm1, self.W_ci1) + self.bi1)
+                f_t = T.nnet.sigmoid(T.dot(h_t_1, self.W_xf1) + T.dot(h_tm1, self.W_hf1) + T.dot(c_tm1, self.W_cf1) + self.bf1)
+                temp = T.tanh(T.dot(h_t_1, self.W_xc1) + T.dot(h_tm1, self.W_hc1) + self.bc1)
+                c_t = f_t * c_tm1 + i_t * temp       
+                o_t = T.nnet.sigmoid(T.dot(h_t_1, self.W_xo1) + T.dot(h_tm1, self.W_ho1) + T.dot(c_t, self.W_co1) + self.bo1)
+                h_t = o_t * T.tanh(c_t)
+                
+                s_t = T.nnet.softmax(T.dot(h_t, self.w) + self.b)
+
+                return [h_t, c_t, h_t_1, c_t_1, s_t]            
+
+            [h_1, c_1, h_0, c_0, s], _ = theano.scan(fn=recurrence,
+                                    sequences=x,
+                                    outputs_info=[self.h1, self.c1, self.h0, self.c0, None],
+                                    n_steps=x.shape[0])
+            
         
         p_y_given_x_sentence = s[:, 0, :]
         y_pred = T.argmax(p_y_given_x_sentence, axis=1)  
@@ -246,7 +347,7 @@ def test_lstm(**kwargs):
     """
     # process input arguments
     param = {
-        'fold': 3,
+        'experiment':'standard',
         'lr': 0.0970806646812754,
         'verbose': True,
         'decay': True,
@@ -258,6 +359,7 @@ def test_lstm(**kwargs):
         'savemodel': False,
         'normal': True,
         'layer_norm': False,
+        'minibatch_size':10,
         'folder':'../result'}
     
     param_diff = set(kwargs.keys()) - set(param.keys())
@@ -274,19 +376,15 @@ def test_lstm(**kwargs):
 
     # load the dataset
     print('... loading the dataset')
-    train_set, valid_set, test_set, dic = load_data(2)
-    train_set_3, valid_set_3, test_set_3, dic_3 = load_data(3)
+    #train_set_2, valid_set_2, test_set_2, dic_2 = load_data(2)
+    train_set, valid_set, test_set, dic = load_data(3)
     
-    #words2idx
-    #labels2idx
-    #tables2idx
     train_set = list(train_set)
     valid_set = list(valid_set)
-    test_set = list(test_set)
+
+    # Add validation set to train set
     for i in range(3):
-        train_set[i] += valid_set_3[i]
-        test_set[i] = test_set_3[i]
-    
+        train_set[i] += valid_set[i]
     
     # create mapping from index to label, and index to word
     idx2label = dict((k, v) for v, k in dic['labels2idx'].items())
@@ -294,15 +392,20 @@ def test_lstm(**kwargs):
     
     # unpack dataset
     train_lex, train_ne, train_y = train_set
-    valid_lex, valid_ne, valid_y = valid_set
+    #valid_lex, valid_ne, valid_y = valid_set
     test_lex, test_ne, test_y = test_set
+    
+    n_trainbatches = len(train_lex)//param['minibatch_size']
 
+    print("Sentences in train: %d, Words in train: %d" % (count_of_words_and_sentences(train_lex)))
+    print("Sentences in test: %d, Words in test: %d" % (count_of_words_and_sentences(test_lex)))
+    
     vocsize = len(dic['words2idx'])
     nclasses = len(dic['labels2idx'])
     nsentences = len(train_lex)
     
-    groundtruth_valid = [[idx2label[x] for x in y] for y in valid_y]
-    words_valid = [[idx2word[x] for x in w] for w in valid_lex]
+    #groundtruth_valid = [[idx2label[x] for x in y] for y in valid_y]
+    #words_valid = [[idx2word[x] for x in w] for w in valid_lex]
     groundtruth_test = [[idx2label[x] for x in y] for y in test_y]
     words_test = [[idx2word[x] for x in w] for w in test_lex]
 
@@ -331,73 +434,62 @@ def test_lstm(**kwargs):
 
         param['ce'] = e
         tic = timeit.default_timer()
-
-        for i, (x, y) in enumerate(zip(train_lex, train_y)):
-            
-            lstm.train(x, y, param['win'], param['clr'])
-            
-            print('[learning] epoch %i >> %2.2f%%' % (
-                e, (i + 1) * 100. / nsentences), end=' ')
-            print('completed in %.2f (sec) <<\r' % (timeit.default_timer() - tic), end='')
-            sys.stdout.flush()
         
-        predictions_test = [[idx2label[x] for x in lstm.classify(numpy.asarray(
-                    contextwin(x, param['win'])).astype('int32'))]
-                     for x in test_lex]
+        for minibatch_index in range(n_trainbatches):
+            for i in range(minibatch_index*param['minibatch_size'],(1 + minibatch_index)*param['minibatch_size']):
+                x = train_lex[i]
+                y = train_y[i]
+                lstm.train(x, y, param['win'], param['clr'])
 
-        predictions_valid = [[idx2label[x] for x in lstm.classify(numpy.asarray(
-                    contextwin(x, param['win'])).astype('int32'))]
-                     for x in valid_lex]
-        
-        # evaluation // compute the accuracy using conlleval.pl
-        res_test = conlleval(predictions_test,
-                             groundtruth_test,
-                             words_test,
-                             param['folder'] + '/current.test.txt',
-                             param['folder'])
-        
-        res_valid = conlleval(predictions_valid,
-                              groundtruth_valid,
-                              words_valid,
-                              param['folder'] + '/current.valid.txt',
-                              param['folder'])
+                print('[learning] epoch %i >> %2.2f%%' % (
+                    e, (minibatch_index*param['minibatch_size']+i + 1) * 100. / nsentences), end=' ')
+                print('completed in %.2f (sec) <<\r' % (timeit.default_timer() - tic), end='')
+                sys.stdout.flush()
 
-        if res_valid['f1'] > best_f1:
+            predictions_test = [[idx2label[x] for x in lstm.classify(numpy.asarray(
+                        contextwin(x, param['win'])).astype('int32'))]
+                         for x in test_lex]
 
-            if param['savemodel']:
-                lstm.save(param['folder'])
+            # evaluation // compute the accuracy using conlleval.pl
+            res_test = conlleval(predictions_test,
+                                 groundtruth_test,
+                                 words_test,
+                                 param['folder'] + '/current.test.txt',
+                                 param['folder'])
 
-            best_lstm = copy.deepcopy(lstm)
-            best_f1 = res_valid['f1']
 
-            if param['verbose']:
-                print('NEW BEST: epoch', e,
-                      'valid F1', res_valid['f1'],
-                      'best test F1', res_test['f1'])
+            if res_test['f1'] > best_f1:
 
-            param['vf1'], param['tf1'] = res_valid['f1'], res_test['f1']
-            param['vp'], param['tp'] = res_valid['p'], res_test['p']
-            param['vr'], param['tr'] = res_valid['r'], res_test['r']
-            param['be'] = e
+                if param['savemodel']:
+                    lstm.save(param['folder'])
 
-            os.rename(param['folder'] + '/current.test.txt',
-                      param['folder'] + '/best.test.txt')
-            os.rename(param['folder'] + '/current.valid.txt',
-                      param['folder'] + '/best.valid.txt')
-        else:
-            if param['verbose']:
-                print('')
+                best_lstm = copy.deepcopy(lstm)
+                best_f1 = res_test['f1']
 
-        # learning rate decay if no improvement in 10 epochs
-        if param['decay'] and abs(param['be']-param['ce']) >= 10:
-            param['clr'] *= 0.5
-            lstm = best_lstm
+                if param['verbose']:
+                    print('NEW BEST: epoch %d, minibatch %d/%d, best test F1: %.3f' 
+                          %(e, minibatch_index+1, n_trainbatches, res_test['f1']))
 
-        if param['clr'] < 1e-5:
-            break
+                param['tf1'] = res_test['f1']
+                param['tp'] = res_test['p']
+                param['tr'] = res_test['r']
+                param['be'] = e
+
+                os.rename(param['folder'] + '/current.test.txt',
+                          param['folder'] + '/best.test.txt')
+            else:
+                if param['verbose']:
+                    print('')
+
+            # learning rate decay if no improvement in 10 epochs
+            if param['decay'] and abs(param['be']-param['ce']) >= 10:
+                param['clr'] *= 0.5
+                lstm = best_lstm
+
+            if param['clr'] < 1e-5:
+                break
 
     print('BEST RESULT: epoch', param['be'],
-           'valid F1', param['vf1'],
            'best test F1', param['tf1'],
            'with the model', param['folder'])
     

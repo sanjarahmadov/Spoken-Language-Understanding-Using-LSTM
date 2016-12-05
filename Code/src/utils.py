@@ -24,6 +24,18 @@ import sys
 import theano
 import theano.tensor as T
 
+def count_of_words_and_sentences(X):
+    sentences_in_train = 0
+    words_in_train = 0
+    for i in X:
+        sentences_in_train+=1
+        for j in i:
+            words_in_train+=1
+            
+    return sentences_in_train, words_in_train
+
+
+
 def check_dir(dirname):
     if not os.path.exists(dirname):
         os.makedirs(dirname)
