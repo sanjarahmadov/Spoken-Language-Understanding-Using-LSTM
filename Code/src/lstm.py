@@ -21,8 +21,8 @@ import sys
 sys.setrecursionlimit(3000)
 
 class LSTM(object):
-    def __init__(self, n_hidden, n_out, n_emb, dim_emb, cwind_size, normal=True, layer_norm = False, 
-                 n_hidden2 = 100, experiment = 'standard', ma = 3, simplified_type = 'no_forget'):
+    def __init__(self, n_hidden, n_hidden2, n_out, n_emb, dim_emb, cwind_size, 
+                 normal, layer_norm, experiment, ma, simplified_type):
         """Initialize the parameters for the LSTM
 
         :type nh: int
@@ -112,15 +112,7 @@ class LSTM(object):
         self.bf = theano.shared(name='bf',
                                 value=numpy.zeros(n_hidden,
                                 dtype=theano.config.floatX))
-        
-        self.w = theano.shared(name='w',
-                               value=0.2 * numpy.random.uniform(-1.0, 1.0,
-                               (n_hidden, n_out))
-                               .astype(theano.config.floatX))
-        
-        self.b = theano.shared(name='b',
-                               value=numpy.zeros(n_out,
-                               dtype=theano.config.floatX))       
+            
         
         self.h0 = theano.shared(name='h0',
                                 value=numpy.zeros(n_hidden,
@@ -132,7 +124,7 @@ class LSTM(object):
         
         # bundle
         self.params = [self.emb, self.W_xi, self.W_xo, self.W_xc, self.W_xf, self.W_hi, self.W_ho, self.W_hc, self.W_hf,
-                       self.W_ci, self.W_co, self.W_cf, self.bi, self.bo, self.bc, self.bf, self.w, self.b, self.c0, self.h0]
+                       self.W_ci, self.W_co, self.W_cf, self.bi, self.bo, self.bc, self.bf, self.c0, self.h0]
         
         idxs = T.imatrix()
         x = self.emb[idxs].reshape((idxs.shape[0], dim_emb * cwind_size))
@@ -142,6 +134,17 @@ class LSTM(object):
             print("Layer norm is True. Do something!")
             
         if experiment is 'standard':
+            self.w = theano.shared(name='w',
+                               value=0.2 * numpy.random.uniform(-1.0, 1.0,
+                               (n_hidden, n_out))
+                               .astype(theano.config.floatX))
+        
+            self.b = theano.shared(name='b',
+                               value=numpy.zeros(n_out,
+                               dtype=theano.config.floatX))   
+            
+            self.params += [self.w, self.b]
+            
             def recurrence(x_t, h_tm1, c_tm1):
                 i_t = T.nnet.sigmoid(T.dot(x_t, self.W_xi) + T.dot(h_tm1, self.W_hi) + T.dot(c_tm1, self.W_ci) + self.bi)
                 f_t = T.nnet.sigmoid(T.dot(x_t, self.W_xf) + T.dot(h_tm1, self.W_hf) + T.dot(c_tm1, self.W_cf) + self.bf)
@@ -232,7 +235,19 @@ class LSTM(object):
             self.params += [self.W_xi1, self.W_xo1, self.W_xc1, self.W_xf1, self.W_hi1, self.W_ho1, self.W_hc1, self.W_hf1,
                        self.W_ci1, self.W_co1, self.W_cf1, self.bi1, self.bo1, self.bc1, self.bf1, self.c1, self.h1]
             
+            self.w = theano.shared(name='w',
+                               value=0.2 * numpy.random.uniform(-1.0, 1.0,
+                               (n_hidden2, n_out))
+                               .astype(theano.config.floatX))
+        
+            self.b = theano.shared(name='b',
+                               value=numpy.zeros(n_out,
+                               dtype=theano.config.floatX))   
             
+            self.params += [self.w, self.b]
+            
+            print(len(self.params))
+            print(self.params)
             
             def recurrence(x_t, h_tm1, c_tm1, h_tm2, c_tm2):
                 
@@ -240,9 +255,10 @@ class LSTM(object):
                 f_t_1 = T.nnet.sigmoid(T.dot(x_t, self.W_xf) + T.dot(h_tm2, self.W_hf) + T.dot(c_tm2, self.W_cf) + self.bf)
                 temp = T.tanh(T.dot(x_t, self.W_xc) + T.dot(h_tm2, self.W_hc) + self.bc)
                 c_t_1 = f_t_1 * c_tm2 + i_t_1 * temp       
-                o_t_1 = T.nnet.sigmoid(T.dot(x_t, self.W_xo) + T.dot(h_tm2, self.W_ho) + T.dot(c_t, self.W_co) + self.bo)
-                h_t_1 = o_t_1 * T.tanh(c_t_1)                
-                h_t_1 = T.dot(h_t_1, self.W_Transform) + self.b_Transform
+                o_t_1 = T.nnet.sigmoid(T.dot(x_t, self.W_xo) + T.dot(h_tm2, self.W_ho) + T.dot(c_t_1, self.W_co) + self.bo)
+                h_t_1 = o_t_1 * T.tanh(c_t_1)   
+                
+                #h_t_1 = T.dot(h_t_1, self.W_Transform) + self.b_Transform
                            
                 i_t = T.nnet.sigmoid(T.dot(h_t_1, self.W_xi1) + T.dot(h_tm1, self.W_hi1) + T.dot(c_tm1, self.W_ci1) + self.bi1)
                 f_t = T.nnet.sigmoid(T.dot(h_t_1, self.W_xf1) + T.dot(h_tm1, self.W_hf1) + T.dot(c_tm1, self.W_cf1) + self.bf1)
@@ -348,11 +364,12 @@ def test_lstm(**kwargs):
     # process input arguments
     param = {
         'experiment':'standard',
-        'lr': 0.0970806646812754,
+        'lr': 0.1,
         'verbose': True,
         'decay': True,
         'win': 7,
         'nhidden': 200,
+        'nhidden2':200,
         'seed': 345,
         'emb_dimension': 50,
         'nepochs': 60,
@@ -360,6 +377,8 @@ def test_lstm(**kwargs):
         'normal': True,
         'layer_norm': False,
         'minibatch_size':10,
+        'moving_avg':3,
+        'simplified_type':'no_forget',
         'folder':'../result'}
     
     param_diff = set(kwargs.keys()) - set(param.keys())
@@ -416,12 +435,17 @@ def test_lstm(**kwargs):
     print('... building the model')
     lstm = LSTM(
         n_hidden=param['nhidden'],
+        n_hidden2=param['nhidden2'],
         n_out=nclasses,
         n_emb=vocsize,
         dim_emb=param['emb_dimension'],
         cwind_size=param['win'],
         normal=param['normal'],
-        layer_norm=param['layer_norm'])
+        layer_norm=param['layer_norm'],
+        experiment=param['experiment'],
+        ma=param['moving_avg'],
+        simplified_type=param['simplified_type']
+    )
 
     # train with early stopping on validation set
     print('... training')
