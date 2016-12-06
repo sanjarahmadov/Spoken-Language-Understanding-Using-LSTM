@@ -245,10 +245,7 @@ class LSTM(object):
                                dtype=theano.config.floatX))   
             
             self.params += [self.w, self.b]
-            
-            print(len(self.params))
-            print(self.params)
-            
+
             def recurrence(x_t, h_tm1, c_tm1, h_tm2, c_tm2):
                 
                 i_t_1 = T.nnet.sigmoid(T.dot(x_t, self.W_xi) + T.dot(h_tm2, self.W_hi) + T.dot(c_tm2, self.W_ci) + self.bi)
@@ -465,10 +462,6 @@ def test_lstm(**kwargs):
                 y = train_y[i]
                 lstm.train(x, y, param['win'], param['clr'])
 
-                print('[learning] epoch %i >> %2.2f%%' % (
-                    e, (minibatch_index*param['minibatch_size']+i + 1) * 100. / nsentences), end=' ')
-                print('completed in %.2f (sec) <<\r' % (timeit.default_timer() - tic), end='')
-                sys.stdout.flush()
 
             predictions_test = [[idx2label[x] for x in lstm.classify(numpy.asarray(
                         contextwin(x, param['win'])).astype('int32'))]
