@@ -559,14 +559,14 @@ def test_lstm(**kwargs):
                 if param['verbose']:
                     print('')
 
-            # learning rate decay if no improvement in 10 epochs
-            if param['decay'] and abs(param['be']-param['ce']) >= 10:
-                param['clr'] *= 0.5
-                print("Decay happened. New Learning Rate:", param['clr'])
-                lstm = best_lstm
+        # learning rate decay if no improvement in 10 epochs
+        if param['decay'] and abs(param['be']-param['ce']) >= 10:
+            param['clr'] *= 0.5
+            print("Decay happened. New Learning Rate:", param['clr'])
+            lstm = best_lstm
 
-            if param['clr'] < 1e-5:
-                break
+        if param['clr'] < 0.00001:
+            break
 
     print('BEST RESULT: epoch', param['be'],
            'best test F1', param['tf1'],
