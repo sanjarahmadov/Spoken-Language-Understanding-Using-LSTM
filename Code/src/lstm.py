@@ -11,6 +11,7 @@ import theano
 import theano.tensor as T
 from theano.tensor.nnet import conv2d
 from theano.tensor.signal import downsample
+import theano.typed_list
 import random
 
 from utils import contextwin, shared_dataset, load_data, shuffle, conlleval, check_dir, count_of_words_and_sentences
@@ -163,6 +164,49 @@ class LSTM(object):
                                     sequences=x,
                                     outputs_info=[self.h0, self.c0, None],
                                     n_steps=x.shape[0])
+            
+        elif experiment is 'attention':
+            
+            self.w = theano.shared(name='w',
+                               value=0.2 * numpy.random.uniform(-1.0, 1.0,
+                               (n_hidden, n_out))
+                               .astype(theano.config.floatX))
+                        
+            self.w_att = theano.shared(name='w_att',
+                               value=0.2 * numpy.random.uniform(-1.0, 1.0,
+                               (n_hidden))
+                               .astype(theano.config.floatX))  
+            
+            self.b = theano.shared(name='b',
+                               value=numpy.zeros(n_out,
+                               dtype=theano.config.floatX))   
+            
+            self.params += [self.w, self.b, self.w_att]
+            
+            def recurrence(x_t, h_tm1, c_tm1):
+                i_t = T.nnet.sigmoid(T.dot(x_t, self.W_xi) + T.dot(h_tm1, self.W_hi) + T.dot(c_tm1, self.W_ci) + self.bi)
+                f_t = T.nnet.sigmoid(T.dot(x_t, self.W_xf) + T.dot(h_tm1, self.W_hf) + T.dot(c_tm1, self.W_cf) + self.bf)
+
+                temp = T.tanh(T.dot(x_t, self.W_xc) + T.dot(h_tm1, self.W_hc) + self.bc)
+                c_t = f_t * c_tm1 + i_t * temp       
+
+                o_t = T.nnet.sigmoid(T.dot(x_t, self.W_xo) + T.dot(h_tm1, self.W_ho) + T.dot(c_t, self.W_co) + self.bo)
+
+                h_t = o_t * T.tanh(c_t)
+                
+                M = T.tanh(h_t)
+                a = T.nnet.relu(T.dot(M, self.w_att))
+                h_t_new = T.tanh(T.dot(a.T, M))
+                
+                s_t = T.nnet.softmax(T.dot(h_t_new, self.w) + self.b)
+
+                return [h_t, c_t, s_t]            
+
+            [h, c, s], _ = theano.scan(fn=recurrence,
+                                    sequences=x,
+                                    outputs_info=[self.h0, self.c0, None],
+                                    n_steps=x.shape[0])
+
             
         elif experiment is 'moving_average':
             
@@ -335,7 +379,8 @@ class LSTM(object):
                                     n_steps=x.shape[0])
             
         
-        p_y_given_x_sentence = s[:, 0, :]
+        p_y_given_x_sentence = s[:,0,:]
+        #p_y_given_x_sentence = s_t
         y_pred = T.argmax(p_y_given_x_sentence, axis=1)  
         
         # cost and gradients and learning rate
@@ -350,6 +395,9 @@ class LSTM(object):
 
         # theano functions to compile
         self.classify = theano.function(inputs=[idxs], outputs=y_pred)
+        
+        self.see_res = theano.function(inputs=[idxs], outputs=[p_y_given_x_sentence.shape, x.shape], on_unused_input='ignore')
+        
         self.sentence_train = theano.function(inputs=[idxs, y_sentence, lr],
                                               outputs=sentence_nll,
                                               updates=sentence_updates)
@@ -368,6 +416,9 @@ class LSTM(object):
         labels = y
 
         self.sentence_train(words, labels, learning_rate)
+        #print(self.see_res(words))
+        #return(self.see_res(words))
+        
         if self.normal:
             self.normalize()
 
@@ -518,15 +569,19 @@ def test_lstm(**kwargs):
         tic = timeit.default_timer()
         
         for minibatch_index in range(n_trainbatches):
+            
+        
             for i in range(minibatch_index*param['minibatch_size'],(1 + minibatch_index)*param['minibatch_size']):
                 x = train_lex[i]
                 y = train_y[i]
-                lstm.train(x, y, param['win'], param['clr'])
-
-
+                
+                res = lstm.train(x, y, param['win'], param['clr'])
+                #return res
+        
             predictions_test = [[idx2label[x] for x in lstm.classify(numpy.asarray(
                         contextwin(x, param['win'])).astype('int32'))]
                          for x in test_lex]
+            
 
             # evaluation // compute the accuracy using conlleval.pl
             res_test = conlleval(predictions_test,
