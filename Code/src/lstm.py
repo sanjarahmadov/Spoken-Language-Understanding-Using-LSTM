@@ -23,7 +23,7 @@ sys.setrecursionlimit(3000)
 
 class LSTM(object):
     def __init__(self, n_hidden, n_hidden2, n_out, n_emb, dim_emb, cwind_size, 
-                 normal, layer_norm, experiment, ma, simplified_type):
+                 normal, layer_norm, experiment, with_attention, simplified_type):
         """Initialize the parameters for the LSTM
 
         :type nh: int
@@ -127,6 +127,15 @@ class LSTM(object):
         self.params = [self.emb, self.W_xi, self.W_xo, self.W_xc, self.W_xf, self.W_hi, self.W_ho, self.W_hc, self.W_hf,
                        self.W_ci, self.W_co, self.W_cf, self.bi, self.bo, self.bc, self.bf, self.c0, self.h0]
         
+        if with_attention is True:
+            self.w_att = theano.shared(name='w_att',
+                               value=0.2 * numpy.random.uniform(-1.0, 1.0,
+                               (n_hidden))
+                               .astype(theano.config.floatX)) 
+            
+            self.params += [self.w_att]
+        
+        
         idxs = T.imatrix()
         x = self.emb[idxs].reshape((idxs.shape[0], dim_emb * cwind_size))
         y_sentence = T.ivector('y_sentence')  # labels
@@ -149,14 +158,20 @@ class LSTM(object):
             def recurrence(x_t, h_tm1, c_tm1):
                 i_t = T.nnet.sigmoid(T.dot(x_t, self.W_xi) + T.dot(h_tm1, self.W_hi) + T.dot(c_tm1, self.W_ci) + self.bi)
                 f_t = T.nnet.sigmoid(T.dot(x_t, self.W_xf) + T.dot(h_tm1, self.W_hf) + T.dot(c_tm1, self.W_cf) + self.bf)
-
                 temp = T.tanh(T.dot(x_t, self.W_xc) + T.dot(h_tm1, self.W_hc) + self.bc)
                 c_t = f_t * c_tm1 + i_t * temp       
-
                 o_t = T.nnet.sigmoid(T.dot(x_t, self.W_xo) + T.dot(h_tm1, self.W_ho) + T.dot(c_t, self.W_co) + self.bo)
-
                 h_t = o_t * T.tanh(c_t)
-                s_t = T.nnet.softmax(T.dot(h_t, self.w) + self.b)
+                
+                if with_attention is True:
+                    pass
+                    #M = T.tanh(h_t)
+                    #a = T.nnet.relu(T.dot(M, self.w_att))
+                    #h_t_new = T.tanh(T.dot(a.T, M))              
+                    #s_t = T.nnet.softmax(T.dot(h_t_new, self.w) + self.b)                    
+                else:
+                    s_t = h_t
+                    #s_t = T.nnet.softmax(T.dot(h_t, self.w) + self.b)
 
                 return [h_t, c_t, s_t]            
 
@@ -165,48 +180,9 @@ class LSTM(object):
                                     outputs_info=[self.h0, self.c0, None],
                                     n_steps=x.shape[0])
             
-        elif experiment is 'attention':
+            if with_attention is True:
             
-            self.w = theano.shared(name='w',
-                               value=0.2 * numpy.random.uniform(-1.0, 1.0,
-                               (n_hidden, n_out))
-                               .astype(theano.config.floatX))
-                        
-            self.w_att = theano.shared(name='w_att',
-                               value=0.2 * numpy.random.uniform(-1.0, 1.0,
-                               (n_hidden))
-                               .astype(theano.config.floatX))  
-            
-            self.b = theano.shared(name='b',
-                               value=numpy.zeros(n_out,
-                               dtype=theano.config.floatX))   
-            
-            self.params += [self.w, self.b, self.w_att]
-            
-            def recurrence(x_t, h_tm1, c_tm1):
-                i_t = T.nnet.sigmoid(T.dot(x_t, self.W_xi) + T.dot(h_tm1, self.W_hi) + T.dot(c_tm1, self.W_ci) + self.bi)
-                f_t = T.nnet.sigmoid(T.dot(x_t, self.W_xf) + T.dot(h_tm1, self.W_hf) + T.dot(c_tm1, self.W_cf) + self.bf)
-
-                temp = T.tanh(T.dot(x_t, self.W_xc) + T.dot(h_tm1, self.W_hc) + self.bc)
-                c_t = f_t * c_tm1 + i_t * temp       
-
-                o_t = T.nnet.sigmoid(T.dot(x_t, self.W_xo) + T.dot(h_tm1, self.W_ho) + T.dot(c_t, self.W_co) + self.bo)
-
-                h_t = o_t * T.tanh(c_t)
-                
-                M = T.tanh(h_t)
-                a = T.nnet.relu(T.dot(M, self.w_att))
-                h_t_new = T.tanh(T.dot(a.T, M))
-                
-                s_t = T.nnet.softmax(T.dot(h_t_new, self.w) + self.b)
-
-                return [h_t, c_t, s_t]            
-
-            [h, c, s], _ = theano.scan(fn=recurrence,
-                                    sequences=x,
-                                    outputs_info=[self.h0, self.c0, None],
-                                    n_steps=x.shape[0])
-
+            s = T.nnet.softmax(T.dot(h, self.w) + self.b)
             
         elif experiment is 'moving_average':
             
@@ -247,20 +223,22 @@ class LSTM(object):
                 
                 i_t = T.nnet.sigmoid(T.dot(x_t, self.W_xi) + T.dot(h_tm1, self.W_hi) + T.dot(c_tm1, self.W_ci) + self.bi)
                 f_t = T.nnet.sigmoid(T.dot(x_t, self.W_xf) + T.dot(h_tm1, self.W_hf) + T.dot(c_tm1, self.W_cf) + self.bf)
-
-                temp = T.tanh(T.dot(x_t, self.W_xc) + T.dot(h_tm1, self.W_hc) + self.bc)
-                                      
+                temp = T.tanh(T.dot(x_t, self.W_xc) + T.dot(h_tm1, self.W_hc) + self.bc)                                     
                 c_t = f_t * c_tm1 + i_t * temp       
-
                 o_t = T.nnet.sigmoid(T.dot(x_t, self.W_xo) + T.dot(h_tm1, self.W_ho) + T.dot(c_t, self.W_co) + self.bo)
-
                 h_t = o_t * T.tanh(c_t)
-                                      
-                p_t = T.dot(h_t, self.W_hp)
-                                
-                q_t = T.dot(p_t, self.W_p0) + T.dot(p_tm1, self.W_p1) + T.dot(p_tm2, self.W_p2) + self.b
-                                
-                s_t = T.nnet.softmax(q_t)
+                
+                if with_attention is True:
+                    M = T.tanh(h_t)
+                    a = T.nnet.relu(T.dot(M, self.w_att))
+                    h_t_new = T.tanh(T.dot(a.T, M))  
+                    p_t = T.dot(h_t_new, self.W_hp)                               
+                    q_t = T.dot(p_t, self.W_p0) + T.dot(p_tm1, self.W_p1) + T.dot(p_tm2, self.W_p2) + self.b                     
+                    s_t = T.nnet.softmax(T.dot(h_t_new, self.w) + self.b)                    
+                else:
+                    p_t = T.dot(h_t, self.W_hp)                               
+                    q_t = T.dot(p_t, self.W_p0) + T.dot(p_tm1, self.W_p1) + T.dot(p_tm2, self.W_p2) + self.b                      
+                    s_t = T.nnet.softmax(q_t)
 
                 return [h_t, c_t, p_t, p_tm1, s_t]            
 
@@ -268,8 +246,7 @@ class LSTM(object):
                                     sequences=x,
                                     outputs_info=[self.h0, self.c0, self.p0, self.p1, None],
                                     n_steps=x.shape[0])
-                                      
-                                      
+                                 
         elif experiment is 'deep':
             self.W_xi1 = theano.shared(name='W_xi1',
                                     value=0.2 * numpy.random.uniform(-1.0, 1.0,
@@ -330,7 +307,6 @@ class LSTM(object):
             self.bf1 = theano.shared(name='bf1',
                                     value=numpy.zeros(n_hidden2,
                                     dtype=theano.config.floatX))            
-
             
             self.h1 = theano.shared(name='h1',
                                 value=numpy.zeros(n_hidden2,
@@ -369,7 +345,13 @@ class LSTM(object):
                 o_t = T.nnet.sigmoid(T.dot(h_t_1, self.W_xo1) + T.dot(h_tm1, self.W_ho1) + T.dot(c_t, self.W_co1) + self.bo1)
                 h_t = o_t * T.tanh(c_t)
                 
-                s_t = T.nnet.softmax(T.dot(h_t, self.w) + self.b)
+                if with_attention is True:
+                    M = T.tanh(h_t)
+                    a = T.nnet.relu(T.dot(M, self.w_att))
+                    h_t_new = T.tanh(T.dot(a.T, M))              
+                    s_t = T.nnet.softmax(T.dot(h_t_new, self.w) + self.b)                    
+                else:
+                    s_t = T.nnet.softmax(T.dot(h_t, self.w) + self.b)
 
                 return [h_t, c_t, h_t_1, c_t_1, s_t]            
 
@@ -379,7 +361,7 @@ class LSTM(object):
                                     n_steps=x.shape[0])
             
         
-        p_y_given_x_sentence = s[:,0,:]
+        p_y_given_x_sentence = s
         #p_y_given_x_sentence = s_t
         y_pred = T.argmax(p_y_given_x_sentence, axis=1)  
         
@@ -396,7 +378,7 @@ class LSTM(object):
         # theano functions to compile
         self.classify = theano.function(inputs=[idxs], outputs=y_pred)
         
-        self.see_res = theano.function(inputs=[idxs], outputs=[p_y_given_x_sentence.shape, x.shape], on_unused_input='ignore')
+        self.see_res = theano.function(inputs=[idxs], outputs=[h.shape, s.shape], on_unused_input='ignore')
         
         self.sentence_train = theano.function(inputs=[idxs, y_sentence, lr],
                                               outputs=sentence_nll,
@@ -416,7 +398,7 @@ class LSTM(object):
         labels = y
 
         self.sentence_train(words, labels, learning_rate)
-        #print(self.see_res(words))
+        print(self.see_res(words))
         #return(self.see_res(words))
         
         if self.normal:
@@ -476,17 +458,17 @@ def test_lstm(**kwargs):
         'lr': 0.1,
         'verbose': True,
         'decay': True,
-        'win': 7,
-        'nhidden': 200,
-        'nhidden2':200,
+        'win': 3,
+        'nhidden': 300,
+        'nhidden2':300,
         'seed': 345,
-        'emb_dimension': 50,
-        'nepochs': 60,
+        'emb_dimension': 90,
+        'nepochs': 40,
         'savemodel': False,
         'normal': True,
         'layer_norm': False,
-        'minibatch_size':10,
-        'moving_avg':3,
+        'minibatch_size':4978,
+        'with_attention':False,
         'simplified_type':'no_forget',
         'folder':'../result'}
     
@@ -552,7 +534,7 @@ def test_lstm(**kwargs):
         normal=param['normal'],
         layer_norm=param['layer_norm'],
         experiment=param['experiment'],
-        ma=param['moving_avg'],
+        with_attention=param['with_attention'],
         simplified_type=param['simplified_type']
     )
 
@@ -574,7 +556,6 @@ def test_lstm(**kwargs):
             for i in range(minibatch_index*param['minibatch_size'],(1 + minibatch_index)*param['minibatch_size']):
                 x = train_lex[i]
                 y = train_y[i]
-                
                 res = lstm.train(x, y, param['win'], param['clr'])
                 #return res
         
