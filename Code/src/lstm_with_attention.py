@@ -1,4 +1,3 @@
-
 import os
 import timeit
 import inspect
@@ -19,11 +18,10 @@ from nn_helpers import myMLP, train_nn, Adam
 
 # Otherwise the deepcopy fails
 import sys
-sys.setrecursionlimit(3000)
+sys.setrecursionlimit(9000)
 
-class LSTM(object):
-    def __init__(self, n_hidden, n_hidden2, n_out, n_emb, dim_emb, cwind_size, 
-                 normal, layer_norm, experiment):
+class LSTM_ATT(object):
+    def __init__(self, n_hidden, n_hidden2, n_out, n_emb, dim_emb, cwind_size, normal):
         """Initialize the parameters for the LSTM
 
         :type nh: int
@@ -62,7 +60,7 @@ class LSTM(object):
                                 value=0.2 * numpy.random.uniform(-1.0, 1.0,
                                 (dim_emb * cwind_size, n_hidden))
                                 .astype(theano.config.floatX))
-        self.W_xc = theano.shared(name='wc',
+        self.W_xc = theano.shared(name='W_xc',
                                 value=0.2 * numpy.random.uniform(-1.0, 1.0,
                                 (dim_emb * cwind_size, n_hidden))
                                 .astype(theano.config.floatX))
@@ -122,209 +120,134 @@ class LSTM(object):
                                 value=numpy.zeros(n_hidden,
                                 dtype=theano.config.floatX))
         
+        self.W_att = theano.shared(name='W_att',
+                                value=0.2 * numpy.random.uniform(-1.0, 1.0,
+                                (n_hidden, 1))
+                                .astype(theano.config.floatX))   
+        
         
         # bundle
         self.params = [self.emb, self.W_xi, self.W_xo, self.W_xc, self.W_xf, self.W_hi, self.W_ho, self.W_hc, self.W_hf,
                        self.W_ci, self.W_co, self.W_cf, self.bi, self.bo, self.bc, self.bf, self.c0, self.h0]
         
+        self.W_xi2 = theano.shared(name='W_xi2',
+                                value=0.2 * numpy.random.uniform(-1.0, 1.0,
+                                (n_hidden, n_hidden))
+                                .astype(theano.config.floatX))
+        self.W_xo2 = theano.shared(name='W_xo2',
+                                value=0.2 * numpy.random.uniform(-1.0, 1.0,
+                                (n_hidden, n_hidden))
+                                .astype(theano.config.floatX))
+        self.W_xc2 = theano.shared(name='W_xc2',
+                                value=0.2 * numpy.random.uniform(-1.0, 1.0,
+                                (n_hidden, n_hidden))
+                                .astype(theano.config.floatX))
+        self.W_xf2 = theano.shared(name='W_xf2',
+                                value=0.2 * numpy.random.uniform(-1.0, 1.0,
+                                (n_hidden, n_hidden))
+                                .astype(theano.config.floatX))
+        
+        self.W_hi2 = theano.shared(name='W_hi2',
+                                value=0.2 * numpy.random.uniform(-1.0, 1.0,
+                                (n_hidden, n_hidden))
+                                .astype(theano.config.floatX))
+        self.W_ho2 = theano.shared(name='W_ho2',
+                                value=0.2 * numpy.random.uniform(-1.0, 1.0,
+                                (n_hidden, n_hidden))
+                                .astype(theano.config.floatX))        
+        self.W_hc2 = theano.shared(name='W_hc2',
+                                value=0.2 * numpy.random.uniform(-1.0, 1.0,
+                                (n_hidden, n_hidden))
+                                .astype(theano.config.floatX))        
+        self.W_hf2 = theano.shared(name='W_hf2',
+                                value=0.2 * numpy.random.uniform(-1.0, 1.0,
+                                (n_hidden, n_hidden))
+                                .astype(theano.config.floatX))    
+        # Diagonal weights
+        self.W_ci2 = theano.shared(name='W_ci2',
+                                value=numpy.diag(numpy.diag(0.2 * numpy.random.uniform(-1.0, 1.0,
+                                (n_hidden, n_hidden))))
+                                .astype(theano.config.floatX))
+        self.W_co2 = theano.shared(name='W_co2',
+                                value=numpy.diag(numpy.diag(0.2 * numpy.random.uniform(-1.0, 1.0,
+                                (n_hidden, n_hidden))))
+                                .astype(theano.config.floatX))            
+        self.W_cf2 = theano.shared(name='W_cf2',
+                                value=numpy.diag(numpy.diag(0.2 * numpy.random.uniform(-1.0, 1.0,
+                                (n_hidden, n_hidden))))
+                                .astype(theano.config.floatX))
+        
+        self.bi2 = theano.shared(name='bi2',
+                                value=numpy.zeros(n_hidden,
+                                dtype=theano.config.floatX))
+        self.bo2 = theano.shared(name='bo2',
+                                value=numpy.zeros(n_hidden,
+                                dtype=theano.config.floatX))        
+        self.bc2 = theano.shared(name='bc2',
+                                value=numpy.zeros(n_hidden,
+                                dtype=theano.config.floatX))
+        self.bf2 = theano.shared(name='bf2',
+                                value=numpy.zeros(n_hidden,
+                                dtype=theano.config.floatX))        
+        
+        self.h2 = theano.shared(name='h2',
+                                value=numpy.zeros(n_hidden,
+                                dtype=theano.config.floatX))
+        self.c2 = theano.shared(name='c2',
+                                value=numpy.zeros(n_hidden,
+                                dtype=theano.config.floatX))
+        
+        self.params += [self.W_xi2, self.W_xo2, self.W_xc2, self.W_xf2, self.W_hi2, self.W_ho2, self.W_hc2, self.W_hf2,
+                       self.W_ci2, self.W_co2, self.W_cf2, self.bi2, self.bo2, self.bc2, self.bf2, self.c2, self.h2]     
         
         idxs = T.imatrix()
         x = self.emb[idxs].reshape((idxs.shape[0], dim_emb * cwind_size))
         y_sentence = T.ivector('y_sentence')  # labels
-            
-        if experiment is 'standard':
-            self.w = theano.shared(name='w',
-                               value=0.2 * numpy.random.uniform(-1.0, 1.0,
-                               (n_hidden, n_out))
-                               .astype(theano.config.floatX))
-        
-            self.b = theano.shared(name='b',
-                               value=numpy.zeros(n_out,
-                               dtype=theano.config.floatX))   
-            
-            self.params += [self.w, self.b]
-            
-            def recurrence(x_t, h_tm1, c_tm1):
-                i_t = T.nnet.sigmoid(T.dot(x_t, self.W_xi) + T.dot(h_tm1, self.W_hi) + T.dot(c_tm1, self.W_ci) + self.bi)
-                f_t = T.nnet.sigmoid(T.dot(x_t, self.W_xf) + T.dot(h_tm1, self.W_hf) + T.dot(c_tm1, self.W_cf) + self.bf)
-                temp = T.tanh(T.dot(x_t, self.W_xc) + T.dot(h_tm1, self.W_hc) + self.bc)
-                c_t = f_t * c_tm1 + i_t * temp       
-                o_t = T.nnet.sigmoid(T.dot(x_t, self.W_xo) + T.dot(h_tm1, self.W_ho) + T.dot(c_t, self.W_co) + self.bo)
-                h_t = o_t * T.tanh(c_t)
-                
-                s_t = T.nnet.softmax(T.dot(h_t, self.w) + self.b)
 
-                return [h_t, c_t, s_t]            
+        self.w2 = theano.shared(name='w2',
+                           value=0.2 * numpy.random.uniform(-1.0, 1.0,
+                           (n_hidden, n_out))
+                           .astype(theano.config.floatX))
 
-            [h, c, s], _ = theano.scan(fn=recurrence,
-                                    sequences=x,
-                                    outputs_info=[self.h0, self.c0, None],
-                                    n_steps=x.shape[0])
-            
-            
-        elif experiment is 'moving_average':
-            
-            self.W_hp = theano.shared(name='W_hp',
-                               value=0.2 * numpy.random.uniform(-1.0, 1.0,
-                               (n_hidden, n_hidden))
-                               .astype(theano.config.floatX))
-            
-            diag_matrix = numpy.zeros((n_hidden, n_out))
-            numpy.fill_diagonal(diag_matrix, 1)           
-            self.W_p0 = theano.shared(name='W_p0',
-                               value=diag_matrix
-                               .astype(theano.config.floatX))
-            
-            self.W_p1 = theano.shared(name='W_p1',
-                               value=numpy.zeros((n_hidden, n_out),
-                               dtype=theano.config.floatX)) 
-          
-            self.W_p2 = theano.shared(name='W_p2',
-                               value=numpy.zeros((n_hidden, n_out),
-                               dtype=theano.config.floatX))        
-        
-            self.b = theano.shared(name='b',
-                               value=numpy.zeros(n_out,
-                               dtype=theano.config.floatX))  
-                                      
-            self.p0 = theano.shared(name='p0',
-                               value=numpy.zeros(n_hidden,
-                               dtype=theano.config.floatX))     
-                                      
-            self.p1 = theano.shared(name='p1',
-                               value=numpy.zeros(n_hidden,
-                               dtype=theano.config.floatX))           
-                                      
-            self.params += [self.b, self.W_p0, self.W_p1, self.W_p2, self.W_hp]  
-                                      
-            def recurrence(x_t, h_tm1, c_tm1, p_tm1, p_tm2):
-                
-                i_t = T.nnet.sigmoid(T.dot(x_t, self.W_xi) + T.dot(h_tm1, self.W_hi) + T.dot(c_tm1, self.W_ci) + self.bi)
-                f_t = T.nnet.sigmoid(T.dot(x_t, self.W_xf) + T.dot(h_tm1, self.W_hf) + T.dot(c_tm1, self.W_cf) + self.bf)
-                temp = T.tanh(T.dot(x_t, self.W_xc) + T.dot(h_tm1, self.W_hc) + self.bc)                                     
-                c_t = f_t * c_tm1 + i_t * temp       
-                o_t = T.nnet.sigmoid(T.dot(x_t, self.W_xo) + T.dot(h_tm1, self.W_ho) + T.dot(c_t, self.W_co) + self.bo)
-                h_t = o_t * T.tanh(c_t)
-                
-                p_t = T.dot(h_t, self.W_hp)                               
-                q_t = T.dot(p_t, self.W_p0) + T.dot(p_tm1, self.W_p1) + T.dot(p_tm2, self.W_p2) + self.b                      
-                s_t = T.nnet.softmax(q_t)
+        self.b2 = theano.shared(name='b2',
+                           value=numpy.zeros(n_out,
+                           dtype=theano.config.floatX)) 
 
-                return [h_t, c_t, p_t, p_tm1, s_t]            
+        self.params += [self.w2, self.b2, self.W_att]
 
-            [h, c, p_t, p_t_1, s], _ = theano.scan(fn=recurrence,
-                                    sequences=x,
-                                    outputs_info=[self.h0, self.c0, self.p0, self.p1, None],
-                                    n_steps=x.shape[0])
-                                 
-        elif experiment is 'deep':
-            self.W_xi1 = theano.shared(name='W_xi1',
-                                    value=0.2 * numpy.random.uniform(-1.0, 1.0,
-                                    (n_hidden, n_hidden2))
-                                    .astype(theano.config.floatX))
-            self.W_xo1 = theano.shared(name='W_xo1',
-                                    value=0.2 * numpy.random.uniform(-1.0, 1.0,
-                                    (n_hidden, n_hidden2))
-                                    .astype(theano.config.floatX))
-            self.W_xc1 = theano.shared(name='W_xc1',
-                                    value=0.2 * numpy.random.uniform(-1.0, 1.0,
-                                    (n_hidden, n_hidden2))
-                                    .astype(theano.config.floatX))
-            self.W_xf1 = theano.shared(name='W_xf1',
-                                    value=0.2 * numpy.random.uniform(-1.0, 1.0,
-                                    (n_hidden, n_hidden2))
-                                    .astype(theano.config.floatX))
+        def encoder_recurrence(x_t, h_tm1, c_tm1):
+            i_t = T.nnet.sigmoid(T.dot(x_t, self.W_xi) + T.dot(h_tm1, self.W_hi) + T.dot(c_tm1, self.W_ci) + self.bi)
+            f_t = T.nnet.sigmoid(T.dot(x_t, self.W_xf) + T.dot(h_tm1, self.W_hf) + T.dot(c_tm1, self.W_cf) + self.bf)
+            temp = T.tanh(T.dot(x_t, self.W_xc) + T.dot(h_tm1, self.W_hc) + self.bc)
+            c_t = f_t * c_tm1 + i_t * temp       
+            o_t = T.nnet.sigmoid(T.dot(x_t, self.W_xo) + T.dot(h_tm1, self.W_ho) + T.dot(c_t, self.W_co) + self.bo)
+            h_t = o_t * T.tanh(c_t)
+            return [h_t, c_t]     
 
-            self.W_hi1 = theano.shared(name='W_hi1',
-                                    value=0.2 * numpy.random.uniform(-1.0, 1.0,
-                                    (n_hidden2, n_hidden2))
-                                    .astype(theano.config.floatX))
-            self.W_ho1 = theano.shared(name='W_ho1',
-                                    value=0.2 * numpy.random.uniform(-1.0, 1.0,
-                                    (n_hidden2, n_hidden2))
-                                    .astype(theano.config.floatX))        
-            self.W_hc1 = theano.shared(name='W_hc1',
-                                    value=0.2 * numpy.random.uniform(-1.0, 1.0,
-                                    (n_hidden2, n_hidden2))
-                                    .astype(theano.config.floatX))        
-            self.W_hf1 = theano.shared(name='W_hf1',
-                                    value=0.2 * numpy.random.uniform(-1.0, 1.0,
-                                    (n_hidden2, n_hidden2))
-                                    .astype(theano.config.floatX))    
-            # Diagonal weights
-            self.W_ci1 = theano.shared(name='W_ci1',
-                                    value=numpy.diag(numpy.diag(0.2 * numpy.random.uniform(-1.0, 1.0,
-                                    (n_hidden2, n_hidden2))))
-                                    .astype(theano.config.floatX))
-            self.W_co1 = theano.shared(name='W_co1',
-                                    value=numpy.diag(numpy.diag(0.2 * numpy.random.uniform(-1.0, 1.0,
-                                    (n_hidden2, n_hidden2))))
-                                    .astype(theano.config.floatX))            
-            self.W_cf1 = theano.shared(name='W_cf1',
-                                    value=numpy.diag(numpy.diag(0.2 * numpy.random.uniform(-1.0, 1.0,
-                                    (n_hidden2, n_hidden2))))
-                                    .astype(theano.config.floatX))
+        [h, c], _ = theano.scan(fn=encoder_recurrence,
+                                sequences=x,
+                                outputs_info=[self.h0, self.c0],
+                                n_steps=x.shape[0])
 
-            self.bi1 = theano.shared(name='bi1',
-                                    value=numpy.zeros(n_hidden2,
-                                    dtype=theano.config.floatX))
-            self.bo1 = theano.shared(name='bo1',
-                                    value=numpy.zeros(n_hidden2,
-                                    dtype=theano.config.floatX))        
-            self.bc1 = theano.shared(name='bc1',
-                                    value=numpy.zeros(n_hidden2,
-                                    dtype=theano.config.floatX))
-            self.bf1 = theano.shared(name='bf1',
-                                    value=numpy.zeros(n_hidden2,
-                                    dtype=theano.config.floatX))            
-            
-            self.h1 = theano.shared(name='h1',
-                                value=numpy.zeros(n_hidden2,
-                                dtype=theano.config.floatX))
-            self.c1 = theano.shared(name='c1',
-                                value=numpy.zeros(n_hidden2,
-                                dtype=theano.config.floatX))
-            
-            self.params += [self.W_xi1, self.W_xo1, self.W_xc1, self.W_xf1, self.W_hi1, self.W_ho1, self.W_hc1, self.W_hf1,
-                       self.W_ci1, self.W_co1, self.W_cf1, self.bi1, self.bo1, self.bc1, self.bf1, self.c1, self.h1]
-            
-            self.w = theano.shared(name='w',
-                               value=0.2 * numpy.random.uniform(-1.0, 1.0,
-                               (n_hidden2, n_out))
-                               .astype(theano.config.floatX))
-        
-            self.b = theano.shared(name='b',
-                               value=numpy.zeros(n_out,
-                               dtype=theano.config.floatX))   
-            
-            self.params += [self.w, self.b]
+        M = T.tanh(h)
+        alpha = T.nnet.softmax(T.dot(M, self.W_att))
+        r = T.tanh(T.dot(alpha.T, h))
 
-            def recurrence(x_t, h_tm1, c_tm1, h_tm2, c_tm2):
-                
-                i_t_1 = T.nnet.sigmoid(T.dot(x_t, self.W_xi) + T.dot(h_tm2, self.W_hi) + T.dot(c_tm2, self.W_ci) + self.bi)
-                f_t_1 = T.nnet.sigmoid(T.dot(x_t, self.W_xf) + T.dot(h_tm2, self.W_hf) + T.dot(c_tm2, self.W_cf) + self.bf)
-                temp = T.tanh(T.dot(x_t, self.W_xc) + T.dot(h_tm2, self.W_hc) + self.bc)
-                c_t_1 = f_t_1 * c_tm2 + i_t_1 * temp       
-                o_t_1 = T.nnet.sigmoid(T.dot(x_t, self.W_xo) + T.dot(h_tm2, self.W_ho) + T.dot(c_t_1, self.W_co) + self.bo)
-                h_t_1 = o_t_1 * T.tanh(c_t_1)   
-                                           
-                i_t = T.nnet.sigmoid(T.dot(h_t_1, self.W_xi1) + T.dot(h_tm1, self.W_hi1) + T.dot(c_tm1, self.W_ci1) + self.bi1)
-                f_t = T.nnet.sigmoid(T.dot(h_t_1, self.W_xf1) + T.dot(h_tm1, self.W_hf1) + T.dot(c_tm1, self.W_cf1) + self.bf1)
-                temp = T.tanh(T.dot(h_t_1, self.W_xc1) + T.dot(h_tm1, self.W_hc1) + self.bc1)
-                c_t = f_t * c_tm1 + i_t * temp       
-                o_t = T.nnet.sigmoid(T.dot(h_t_1, self.W_xo1) + T.dot(h_tm1, self.W_ho1) + T.dot(c_t, self.W_co1) + self.bo1)
-                h_t = o_t * T.tanh(c_t)
+        def decoder_recurrence(x_t, h_tm1, c_tm1):
+            i_t = T.nnet.sigmoid(T.dot(x_t, self.W_xi2) + T.dot(h_tm1, self.W_hi2) + T.dot(c_tm1, self.W_ci2) + self.bi2)
+            f_t = T.nnet.sigmoid(T.dot(x_t, self.W_xf2) + T.dot(h_tm1, self.W_hf2) + T.dot(c_tm1, self.W_cf2) + self.bf2)
+            temp = T.tanh(T.dot(x_t, self.W_xc2) + T.dot(h_tm1, self.W_hc2) + self.bc2)
+            c_t = f_t * c_tm1 + i_t * temp       
+            o_t = T.nnet.sigmoid(T.dot(x_t, self.W_xo2) + T.dot(h_tm1, self.W_ho2) + T.dot(c_t, self.W_co2) + self.bo2)
+            h_t = o_t * T.tanh(c_t)
+            s_t = T.nnet.softmax(T.dot(h_t, self.w2) + self.b2)
+            return [h_t, c_t, s_t]     
 
-                s_t = T.nnet.softmax(T.dot(h_t, self.w) + self.b)
-
-                return [h_t, c_t, h_t_1, c_t_1, s_t]            
-
-            [h_1, c_1, h_0, c_0, s], _ = theano.scan(fn=recurrence,
-                                    sequences=x,
-                                    outputs_info=[self.h1, self.c1, self.h0, self.c0, None],
-                                    n_steps=x.shape[0])
-            
-        
+        [h, c, s], _ = theano.scan(fn=decoder_recurrence,
+                                outputs_info=[self.h2, self.c2, None],
+                                non_sequences=r[0,:],
+                                n_steps=x.shape[0])            
+     
         p_y_given_x_sentence = s[:,0,:]
         y_pred = T.argmax(p_y_given_x_sentence, axis=1)  
         
@@ -336,11 +259,14 @@ class LSTM(object):
         
         sentence_gradients = T.grad(sentence_nll, self.params)
         
+        
         sentence_updates = OrderedDict(Adam(self.params, sentence_gradients, lr/100))
 
         # theano functions to compile
         self.classify = theano.function(inputs=[idxs], outputs=y_pred)
-                
+        
+        self.see_res = theano.function(inputs=[idxs], outputs=[x.shape, r.shape, s.shape], on_unused_input='ignore')
+        
         self.sentence_train = theano.function(inputs=[idxs, y_sentence, lr],
                                               outputs=sentence_nll,
                                               updates=sentence_updates)
@@ -357,9 +283,9 @@ class LSTM(object):
         cwords = contextwin(x, window_size)
         words = [numpy.asarray(x).astype('int32') for x in cwords]
         labels = y
-
-        self.sentence_train(words, labels, learning_rate)
+        
         #print(self.see_res(words))
+        self.sentence_train(words, labels, learning_rate)
         #return(self.see_res(words))
         
         if self.normal:
@@ -375,7 +301,7 @@ class LSTM(object):
             param.set_value(numpy.load(os.path.join(folder,
                             param.name + '.npy')))
 
-def test_lstm(**kwargs):
+def test_lstm_att(**kwargs):
     """
     Wrapper function for training and testing LSTM
 
@@ -415,7 +341,6 @@ def test_lstm(**kwargs):
     """
     # process input arguments
     param = {
-        'experiment':'standard',
         'lr': 0.1,
         'verbose': True,
         'decay': True,
@@ -427,7 +352,6 @@ def test_lstm(**kwargs):
         'nepochs': 40,
         'savemodel': False,
         'normal': True,
-        'layer_norm': False,
         'minibatch_size':4978,
         'folder':'../result'}
     
@@ -479,16 +403,14 @@ def test_lstm(**kwargs):
     random.seed(param['seed'])
 
     print('... building the model')
-    lstm = LSTM(
+    lstm = LSTM_ATT(
         n_hidden=param['nhidden'],
         n_hidden2=param['nhidden2'],
         n_out=nclasses,
         n_emb=vocsize,
         dim_emb=param['emb_dimension'],
         cwind_size=param['win'],
-        normal=param['normal'],
-        layer_norm=param['layer_norm'],
-        experiment=param['experiment']
+        normal=param['normal']
     )
 
     # train with early stopping on validation set
@@ -509,7 +431,7 @@ def test_lstm(**kwargs):
             for i in range(minibatch_index*param['minibatch_size'],(1 + minibatch_index)*param['minibatch_size']):
                 x = train_lex[i]
                 y = train_y[i]
-                res = lstm.train(x, y, param['win'], param['clr'])
+                lstm.train(x, y, param['win'], param['clr'])
         
             predictions_test = [[idx2label[x] for x in lstm.classify(numpy.asarray(
                         contextwin(x, param['win'])).astype('int32'))]
