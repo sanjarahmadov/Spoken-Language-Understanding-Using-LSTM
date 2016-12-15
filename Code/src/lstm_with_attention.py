@@ -122,7 +122,7 @@ class LSTM_ATT(object):
         
         self.W_att = theano.shared(name='W_att',
                                 value=0.2 * numpy.random.uniform(-1.0, 1.0,
-                                (n_hidden, 1))
+                                (n_hidden, n_hidden))
                                 .astype(theano.config.floatX))   
         
         
@@ -214,7 +214,7 @@ class LSTM_ATT(object):
                            dtype=theano.config.floatX)) 
 
         self.params += [self.w2, self.b2, self.W_att]
-
+        """
         def encoder_recurrence(x_t, h_tm1, c_tm1):
             i_t = T.nnet.sigmoid(T.dot(x_t, self.W_xi) + T.dot(h_tm1, self.W_hi) + T.dot(c_tm1, self.W_ci) + self.bi)
             f_t = T.nnet.sigmoid(T.dot(x_t, self.W_xf) + T.dot(h_tm1, self.W_hf) + T.dot(c_tm1, self.W_cf) + self.bf)
@@ -232,22 +232,56 @@ class LSTM_ATT(object):
         M = T.tanh(h)
         alpha = T.nnet.softmax(T.dot(M, self.W_att))
         r = T.tanh(T.dot(alpha.T, h))
-
+        
         def decoder_recurrence(x_t, h_tm1, c_tm1):
             i_t = T.nnet.sigmoid(T.dot(x_t, self.W_xi2) + T.dot(h_tm1, self.W_hi2) + T.dot(c_tm1, self.W_ci2) + self.bi2)
             f_t = T.nnet.sigmoid(T.dot(x_t, self.W_xf2) + T.dot(h_tm1, self.W_hf2) + T.dot(c_tm1, self.W_cf2) + self.bf2)
             temp = T.tanh(T.dot(x_t, self.W_xc2) + T.dot(h_tm1, self.W_hc2) + self.bc2)
             c_t = f_t * c_tm1 + i_t * temp       
             o_t = T.nnet.sigmoid(T.dot(x_t, self.W_xo2) + T.dot(h_tm1, self.W_ho2) + T.dot(c_t, self.W_co2) + self.bo2)
-            h_t = o_t * T.tanh(c_t)
+            h_t = o_t * T.tanh(c_t)        
+            
             s_t = T.nnet.softmax(T.dot(h_t, self.w2) + self.b2)
-            return [h_t, c_t, s_t]     
+            return [x_t, h_t, c_t, s_t]     
 
-        [h, c, s], _ = theano.scan(fn=decoder_recurrence,
-                                outputs_info=[self.h2, self.c2, None],
-                                non_sequences=r[0,:],
-                                n_steps=x.shape[0])            
-     
+        [x_t, h, c, s], _ = theano.scan(fn=decoder_recurrence,
+                                outputs_info=[r[0,:], self.h2, self.c2, None],
+                                n_steps=x.shape[0])   
+        
+        
+        """
+        def recurrence(x_t, h_tm1, c_tm1, h_tm2, c_tm2):
+
+            i_t_1 = T.nnet.sigmoid(T.dot(x_t, self.W_xi) + T.dot(h_tm2, self.W_hi) + T.dot(c_tm2, self.W_ci) + self.bi)
+            f_t_1 = T.nnet.sigmoid(T.dot(x_t, self.W_xf) + T.dot(h_tm2, self.W_hf) + T.dot(c_tm2, self.W_cf) + self.bf)
+            temp = T.tanh(T.dot(x_t, self.W_xc) + T.dot(h_tm2, self.W_hc) + self.bc)
+            c_t_1 = f_t_1 * c_tm2 + i_t_1 * temp       
+            o_t_1 = T.nnet.sigmoid(T.dot(x_t, self.W_xo) + T.dot(h_tm2, self.W_ho) + T.dot(c_t_1, self.W_co) + self.bo)
+            h_t_1 = o_t_1 * T.tanh(c_t_1)   
+            
+            M = T.tanh(h_t_1)
+            alpha = T.nnet.softmax(T.dot(M, self.W_att))
+            r = T.tanh((alpha*h_t_1).sum(axis=0))
+            c_t_1 = r
+            
+            i_t = T.nnet.sigmoid(T.dot(h_t_1, self.W_xi2) + T.dot(h_tm1, self.W_hi2) + T.dot(c_tm1, self.W_ci2) + self.bi2)
+            f_t = T.nnet.sigmoid(T.dot(h_t_1, self.W_xf2) + T.dot(h_tm1, self.W_hf2) + T.dot(c_tm1, self.W_cf2) + self.bf2)
+            temp = T.tanh(T.dot(h_t_1, self.W_xc2) + T.dot(h_tm1, self.W_hc2) + self.bc2)
+            c_t = f_t * c_tm1 + i_t * temp  
+            
+            o_t = T.nnet.sigmoid(T.dot(h_t_1, self.W_xo2) + T.dot(h_tm1, self.W_ho2) + T.dot(c_t, self.W_co2) + self.bo2)
+            h_t = o_t * T.tanh(c_t)
+
+            s_t = T.nnet.softmax(T.dot(h_t, self.w2) + self.b2)
+
+            return [h_t, c_t, h_t_1, c_t_1, s_t]            
+
+        [h_1, c_1, h_0, c_0, s], _ = theano.scan(fn=recurrence,
+                                sequences=x,
+                                outputs_info=[self.h2, self.c2, self.h0, self.c0, None],
+                                n_steps=x.shape[0])        
+        #"""
+        
         p_y_given_x_sentence = s[:,0,:]
         y_pred = T.argmax(p_y_given_x_sentence, axis=1)  
         
@@ -265,7 +299,7 @@ class LSTM_ATT(object):
         # theano functions to compile
         self.classify = theano.function(inputs=[idxs], outputs=y_pred)
         
-        self.see_res = theano.function(inputs=[idxs], outputs=[x.shape, r.shape, s.shape], on_unused_input='ignore')
+        self.see_res = theano.function(inputs=[idxs], outputs=[s.shape], on_unused_input='ignore')
         
         self.sentence_train = theano.function(inputs=[idxs, y_sentence, lr],
                                               outputs=sentence_nll,
@@ -401,7 +435,7 @@ def test_lstm_att(**kwargs):
     # instanciate the model
     numpy.random.seed(param['seed'])
     random.seed(param['seed'])
-
+    
     print('... building the model')
     lstm = LSTM_ATT(
         n_hidden=param['nhidden'],
@@ -412,11 +446,12 @@ def test_lstm_att(**kwargs):
         cwind_size=param['win'],
         normal=param['normal']
     )
-
+    
     # train with early stopping on validation set
     print('... training')
     best_f1 = -numpy.inf
     param['clr'] = param['lr']
+    
     for e in range(param['nepochs']):
 
         # shuffle
