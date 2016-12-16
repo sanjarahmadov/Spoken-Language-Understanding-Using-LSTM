@@ -25,6 +25,18 @@ from theano.tensor.signal import downsample
 
 from utils import contextwin
 
+def drop(input, p=0.5): 
+    """
+    :type input: numpy.array
+    :param input: layer or weight matrix on which dropout is applied
+    
+    :type p: float or double between 0. and 1. 
+    :param p: p probability of NOT dropping out a unit, therefore (1.-p) is the drop rate.
+    
+    """            
+    return T.cast(input * numpy.random.binomial(1, p, 300), 'float32')
+
+
 def Adam(params, grads, a=0.001, ro_1=0.9, ro_2=0.999, e=1e-8):
     
     res = []

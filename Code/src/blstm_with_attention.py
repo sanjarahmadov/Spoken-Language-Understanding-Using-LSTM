@@ -14,13 +14,13 @@ import theano.typed_list
 import random
 
 from utils import contextwin, shared_dataset, load_data, shuffle, conlleval, check_dir, count_of_words_and_sentences
-from nn_helpers import myMLP, train_nn, Adam
+from nn_helpers import myMLP, train_nn, Adam, drop
 
 # Otherwise the deepcopy fails
 import sys
 sys.setrecursionlimit(6000)
 
-class LSTM_ATT(object):
+class BLSTM_ATT(object):
     def __init__(self, n_hidden, n_hidden2, n_out, n_emb, dim_emb, cwind_size, normal):
         """Initialize the parameters for the LSTM
 
@@ -225,36 +225,51 @@ class LSTM_ATT(object):
                            dtype=theano.config.floatX)) 
 
         self.params += [self.w2, self.b2, self.W_att, self.W_att2]
-
-        def recurrence(x_t, h_tm1, c_tm1, h_tm2, c_tm2):
-
-            i_t_1 = T.nnet.sigmoid(T.dot(x_t, self.W_xi) + T.dot(h_tm2, self.W_hi) + T.dot(c_tm2, self.W_ci) + self.bi)
-            f_t_1 = T.nnet.sigmoid(T.dot(x_t, self.W_xf) + T.dot(h_tm2, self.W_hf) + T.dot(c_tm2, self.W_cf) + self.bf)
-            temp = T.tanh(T.dot(x_t, self.W_xc) + T.dot(h_tm2, self.W_hc) + self.bc)
-            c_t_1 = f_t_1 * c_tm2 + i_t_1 * temp       
-            o_t_1 = T.nnet.sigmoid(T.dot(x_t, self.W_xo) + T.dot(h_tm2, self.W_ho) + T.dot(c_t_1, self.W_co) + self.bo)
-            h_t_1 = o_t_1 * T.tanh(c_t_1)   
-            
-            alpha = T.nnet.softmax(T.dot(T.tanh(h_t_1), self.W_att) + T.dot(T.tanh(c_t_1), self.W_att2))
-            r = T.tanh((alpha*h_t_1).sum(axis=0))
-            c_t_1 = r
-            
-            i_t = T.nnet.sigmoid(T.dot(h_t_1, self.W_xi2) + T.dot(h_tm1, self.W_hi2) + T.dot(c_tm1, self.W_ci2) + self.bi2)
-            f_t = T.nnet.sigmoid(T.dot(h_t_1, self.W_xf2) + T.dot(h_tm1, self.W_hf2) + T.dot(c_tm1, self.W_cf2) + self.bf2)
-            temp = T.tanh(T.dot(h_t_1, self.W_xc2) + T.dot(h_tm1, self.W_hc2) + self.bc2)
-            c_t = f_t * c_tm1 + i_t * temp  
-            
-            o_t = T.nnet.sigmoid(T.dot(h_t_1, self.W_xo2) + T.dot(h_tm1, self.W_ho2) + T.dot(c_t, self.W_co2) + self.bo2)
+        #"""
+        def encoder_recurrence(x_t, h_tm1, c_tm1):
+            i_t = T.nnet.sigmoid(T.dot(x_t, self.W_xi) + T.dot(h_tm1, self.W_hi) + T.dot(c_tm1, self.W_ci) + self.bi)
+            f_t = T.nnet.sigmoid(T.dot(x_t, self.W_xf) + T.dot(h_tm1, self.W_hf) + T.dot(c_tm1, self.W_cf) + self.bf)
+            temp = T.tanh(T.dot(x_t, self.W_xc) + T.dot(h_tm1, self.W_hc) + self.bc)
+            c_t = f_t * c_tm1 + i_t * temp       
+            o_t = T.nnet.sigmoid(T.dot(x_t, self.W_xo) + T.dot(h_tm1, self.W_ho) + T.dot(c_t, self.W_co) + self.bo)
             h_t = o_t * T.tanh(c_t)
+            
+            h_t = drop(h_t, 0.7)
+            c_t = drop(c_t, 0.7)
+            
+            alpha = T.nnet.softmax(T.dot(T.tanh(h_t), self.W_att) + T.dot(T.tanh(c_t), self.W_att2))
+            r = T.tanh((alpha*h_t).sum(axis=0))
+            c_t = r
+                   
+            return [h_t, c_t]     
 
-            s_t = T.nnet.softmax(T.dot(h_t, self.w2) + self.b2)
-
-            return [h_t, c_t, h_t_1, c_t_1, s_t]            
-
-        [h_1, c_1, h_0, c_0, s], _ = theano.scan(fn=recurrence,
+        [h_1, c_1], _ = theano.scan(fn=encoder_recurrence,
                                 sequences=x,
-                                outputs_info=[self.h2, self.c2, self.h0, self.c0, None],
-                                n_steps=x.shape[0])        
+                                outputs_info=[self.h0, self.c0],
+                                n_steps=x.shape[0])
+        
+        [h_2, c_2], _ = theano.scan(fn=encoder_recurrence,
+                                sequences=x[::-1],
+                                outputs_info=[self.h0, self.c0],
+                                n_steps=x.shape[0])      
+        h = h_1 + h_2
+        
+        def decoder_recurrence(x_t, h_tm1, c_tm1):
+            i_t = T.nnet.sigmoid(T.dot(x_t, self.W_xi2) + T.dot(h_tm1, self.W_hi2) + T.dot(c_tm1, self.W_ci2) + self.bi2)
+            f_t = T.nnet.sigmoid(T.dot(x_t, self.W_xf2) + T.dot(h_tm1, self.W_hf2) + T.dot(c_tm1, self.W_cf2) + self.bf2)
+            temp = T.tanh(T.dot(x_t, self.W_xc2) + T.dot(h_tm1, self.W_hc2) + self.bc2)
+            c_t = f_t * c_tm1 + i_t * temp       
+            o_t = T.nnet.sigmoid(T.dot(x_t, self.W_xo2) + T.dot(h_tm1, self.W_ho2) + T.dot(c_t, self.W_co2) + self.bo2)
+            h_t = o_t * T.tanh(c_t)        
+            
+            s_t = T.nnet.softmax(T.dot(h_t, self.w2) + self.b2)
+            return [h_t, c_t, s_t]     
+
+        [h, c, s], _ = theano.scan(fn=decoder_recurrence,
+                                sequences=h,
+                                outputs_info=[self.h2, self.c2, None],
+                                n_steps=x.shape[0])   
+        
         
         p_y_given_x_sentence = s[:,0,:]
         y_pred = T.argmax(p_y_given_x_sentence, axis=1)  
@@ -273,7 +288,6 @@ class LSTM_ATT(object):
         # theano functions to compile
         self.classify = theano.function(inputs=[idxs], outputs=y_pred)
         
-        # Just to see shape of outputs
         self.see_res = theano.function(inputs=[idxs], outputs=[s.shape], on_unused_input='ignore')
         
         self.sentence_train = theano.function(inputs=[idxs, y_sentence, lr],
@@ -293,9 +307,7 @@ class LSTM_ATT(object):
         words = [numpy.asarray(x).astype('int32') for x in cwords]
         labels = y
         
-        #print(self.see_res(words))
         self.sentence_train(words, labels, learning_rate)
-        #return(self.see_res(words))
         
         if self.normal:
             self.normalize()
@@ -310,7 +322,7 @@ class LSTM_ATT(object):
             param.set_value(numpy.load(os.path.join(folder,
                             param.name + '.npy')))
 
-def test_lstm_att(**kwargs):
+def test_blstm_att(**kwargs):
     """
     Wrapper function for training and testing LSTM
 
@@ -412,7 +424,7 @@ def test_lstm_att(**kwargs):
     random.seed(param['seed'])
     
     print('... building the model')
-    lstm = LSTM_ATT(
+    lstm = BLSTM_ATT(
         n_hidden=param['nhidden'],
         n_hidden2=param['nhidden2'],
         n_out=nclasses,

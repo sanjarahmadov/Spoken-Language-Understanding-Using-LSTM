@@ -26,19 +26,22 @@ class LSTM(object):
                  normal, layer_norm, experiment):
         """Initialize the parameters for the LSTM
 
-        :type nh: int
+        :type n_hidden: int
         :param nh: dimension of the hidden layer
-
-        :type nc: int
+        
+        :type n_hidden2: int
+        :param nh: dimension of the second hidden layer if experiemnt is deep
+        
+        :type n_out: int
         :param nc: number of classes
 
-        :type ne: int
+        :type n_emb: int
         :param ne: number of word embeddings in the vocabulary
 
-        :type de: int
+        :type dim_emb: int
         :param de: dimension of the word embeddings
 
-        :type cs: int
+        :type cwind_size: int
         :param cs: word window context size
 
         :type normal: boolean
@@ -47,7 +50,11 @@ class LSTM(object):
         :type layer_normal: boolean
         :param normal: normalize layer.       
 
+        :type n_hidden2: string
+        :param nh: experiment type
+
         """
+        
         # parameters of the model
         self.emb = theano.shared(name='embeddings',
                                  value=0.2 * numpy.random.uniform(-1.0, 1.0,
@@ -359,8 +366,6 @@ class LSTM(object):
         labels = y
 
         self.sentence_train(words, labels, learning_rate)
-        #print(self.see_res(words))
-        #return(self.see_res(words))
         
         if self.normal:
             self.normalize()
