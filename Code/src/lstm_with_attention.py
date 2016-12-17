@@ -224,7 +224,7 @@ class LSTM_ATT(object):
                            value=numpy.zeros(n_out,
                            dtype=theano.config.floatX)) 
 
-        self.params += [self.w2, self.b2, self.W_att]#, self.W_att2]
+        self.params += [self.w2, self.b2, self.W_att]
 
         def recurrence(x_t, h_tm1, c_tm1, h_tm2, c_tm2):
 
@@ -235,7 +235,7 @@ class LSTM_ATT(object):
             o_t_1 = T.nnet.sigmoid(T.dot(x_t, self.W_xo) + T.dot(h_tm2, self.W_ho) + T.dot(c_t_1, self.W_co) + self.bo)
             h_t_1 = o_t_1 * T.tanh(c_t_1)
                         
-            alpha = T.nnet.softmax(T.dot(T.tanh(h_t_1), self.W_att))# + T.dot(T.tanh(c_t_1), self.W_att2))
+            alpha = T.nnet.softmax(T.dot(T.tanh(h_t_1), self.W_att))
             r = T.tanh((alpha*h_t_1).sum(axis=0))
             c_t_1 = r
             

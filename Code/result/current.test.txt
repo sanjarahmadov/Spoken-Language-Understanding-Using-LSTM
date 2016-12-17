@@ -4571,7 +4571,7 @@ montreal B-fromloc.city_name B-fromloc.city_name
 to O O
 orlando B-toloc.city_name B-toloc.city_name
 and O O
-long B-toloc.city_name B-fromloc.city_name
+long B-toloc.city_name B-toloc.city_name
 beach I-toloc.city_name I-toloc.city_name
 EOS O O
 

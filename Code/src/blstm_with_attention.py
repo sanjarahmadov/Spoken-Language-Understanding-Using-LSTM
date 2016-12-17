@@ -294,7 +294,7 @@ class BLSTM_ATT(object):
                            value=numpy.zeros(n_out,
                            dtype=theano.config.floatX)) 
 
-        self.params += [self.w2, self.b2, self.W_att]#, self.W_att2]
+        self.params += [self.w2, self.b2, self.W_att]
         
         def encoder_recurrence(x_t, h_tm1, c_tm1):
             i_t = T.nnet.sigmoid(T.dot(x_t, self.W_xi) + T.dot(h_tm1, self.W_hi) + T.dot(c_tm1, self.W_ci) + self.bi)
@@ -304,7 +304,7 @@ class BLSTM_ATT(object):
             o_t = T.nnet.sigmoid(T.dot(x_t, self.W_xo) + T.dot(h_tm1, self.W_ho) + T.dot(c_t, self.W_co) + self.bo)
             h_t = o_t * T.tanh(c_t)
             
-            alpha = T.nnet.softmax(T.dot(T.tanh(h_t), self.W_att))# + T.dot(T.tanh(c_t), self.W_att2))
+            alpha = T.nnet.softmax(T.dot(T.tanh(h_t), self.W_att))
             r = T.tanh((alpha*h_t).sum(axis=0))
             c_t = r
                    
@@ -323,7 +323,7 @@ class BLSTM_ATT(object):
             o_t = T.nnet.sigmoid(T.dot(x_t, self.W_xo3) + T.dot(h_tm1, self.W_ho3) + T.dot(c_t, self.W_co3) + self.bo3)
             h_t = o_t * T.tanh(c_t)
             
-            alpha = T.nnet.softmax(T.dot(T.tanh(h_t), self.W_att))# + T.dot(T.tanh(c_t), self.W_att2))
+            alpha = T.nnet.softmax(T.dot(T.tanh(h_t), self.W_att))
             r = T.tanh((alpha*h_t).sum(axis=0))
             c_t = r
                    
