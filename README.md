@@ -1,6 +1,6 @@
 # SPOKEN-LANGUAGE-UNDERSTANDING-USING-LSTM
 
-For this project we have implemented most of the experiments SPOKEN LANGUAGE UNDERSTANDING USING LSTM [[1](https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/20140915012634_789031_1017.pdf)] paper.
+For this project we have implemented most of the experiments SPOKEN LANGUAGE UNDERSTANDING USING LONG SHORT-TERM MEMORY NEURAL NETWORKS [[1](https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/20140915012634_789031_1017.pdf)] paper.
 
 All the code and ipython notebooks are under src, data is under data and results are under results folders.
 
