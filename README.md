@@ -8,4 +8,6 @@ We tried to use exactly same data and parameters to get similar results, and for
 
 You can start reading from Standard LSTM notebook since this run is the base run, and explains how we proceeded for next experiments.
 
+All our findings, comparisons to the original paper and some background knowledge are documented in [report](https://github.com/sanjarahmadov/SPOKEN-LANGUAGE-UNDERSTANDING-USING-LSTM/blob/master/Report.sa3312.ts2957.mfp2124.pdf) file.
+
 [[1](https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/20140915012634_789031_1017.pdf)] K. Yao, B. Peng, Y. Zhang, D. Yu, G. Zweig, and Y. Shi, "SPOKEN LANGUAGE UNDERSTANDING USING LONG SHORT-TERM MEMORY NEURAL NETWORKS", IEEE, 2014.
